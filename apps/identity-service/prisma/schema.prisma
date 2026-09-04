@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model users {
+  id              Int              @id @default(autoincrement())
+  nim             String           @unique
+  nama            String
+  role            String
+  linked_accounts linked_accounts?
+}
+
+model linked_accounts {
+  id             Int      @id @default(autoincrement())
+  user_id        Int      @unique
+  portal_session String?
+  lms_session    String?
+  updated_at     DateTime @default(now()) @updatedAt
+  user           users    @relation(fields: [user_id], references: [id])
+}
+
+model audit_log {
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  action    String
+  timestamp DateTime @default(now())
+}
