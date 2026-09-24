@@ -59,8 +59,9 @@ function decryptSession(encryptedText: string | null): string | null {
 
 // Hash untuk refresh token (disimpan di DB, bukan token mentahnya)
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+// KODE PERBAIKAN
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: true, // Secara dinamis mengizinkan domain apapun (termasuk Vercel Anda)
   credentials: true
 }));
 app.use(helmet());
