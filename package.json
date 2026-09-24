@@ -12,7 +12,9 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "turbo run dev",
+    "build": "turbo run build"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +26,8 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "node-cron": "^4.6.0"
+    "dotenv": "^17.4.2",
+    "node-cron": "^4.6.0",
+    "react-router-dom": "^7.18.3"
   }
 }

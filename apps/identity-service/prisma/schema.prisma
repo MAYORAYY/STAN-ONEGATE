@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-    url      = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model users {
@@ -13,6 +13,7 @@ model users {
   nama            String
   role            String
   linked_accounts linked_accounts?
+  refresh_tokens  refresh_tokens[]
 }
 
 model linked_accounts {
@@ -22,6 +23,16 @@ model linked_accounts {
   lms_session    String?
   updated_at     DateTime @default(now()) @updatedAt
   user           users    @relation(fields: [user_id], references: [id])
+}
+
+model refresh_tokens {
+  id         Int      @id @default(autoincrement())
+  token_hash String   @unique
+  user_id    Int
+  user       users    @relation(fields: [user_id], references: [id])
+  created_at DateTime @default(now())
+  expires_at DateTime
+  revoked    Boolean  @default(false)
 }
 
 model audit_log {

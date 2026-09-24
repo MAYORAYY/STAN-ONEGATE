@@ -17,9 +17,15 @@ async function loginPortalAkademik(nim: string, password: string): Promise<strin
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     maxRedirects: 0,
     validateStatus: (status) => status >= 200 && status < 400
-  });
+});
 
-  const cookies = response.headers['set-cookie'];
+console.log('[identity] Login portal:', {
+  status: response.status,
+  redirectedTo: response.headers['location'] || null,
+  hasCookies: Boolean(response.headers['set-cookie']?.length)
+});
+
+const cookies = response.headers['set-cookie'];
   if (!cookies || cookies.length === 0) {
     throw new Error('Gagal mendapatkan sesi Portal: Cookie tidak ditemukan');
   }
@@ -77,8 +83,15 @@ export async function extractSessions(nim: string, password: string): Promise<Se
     loginLMS(nim, password),
   ]);
 
-  return {
+  const result = {
     portalSession: portalResult.status === 'fulfilled' ? portalResult.value : null,
     lmsSession: lmsResult.status === 'fulfilled' ? lmsResult.value : null,
   };
+
+  console.log('[identity] Hasil ekstraksi sesi:', {
+    portalSession: Boolean(result.portalSession),
+    lmsSession: Boolean(result.lmsSession)
+  });
+
+  return result;
 }
