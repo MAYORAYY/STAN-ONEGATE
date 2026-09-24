@@ -15,10 +15,15 @@ export default function LoginView() {
         setErrorMsg('');
 
         try {
-            const response = await axios.post('http://localhost:3001/identity/login', { 
-                nim: nim, 
-                password: password 
-            });
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const response = await axios.post(`${API_URL}/identity/login`, { 
+    nim: nim, 
+    password: password 
+}, {
+    headers: {
+        'ngrok-skip-browser-warning': 'true'
+    }
+});
 
             if (response.data.accessToken && response.data.refreshToken) {
                 localStorage.setItem('onegate_token', response.data.accessToken);
