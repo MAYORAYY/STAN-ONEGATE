@@ -22,6 +22,17 @@ export const fetchTranskripNilai = async () => {
     }
 };
 
+export const fetchNilaiKarakter = async () => {
+    try {
+        const response = await apiClient.get(`${API_GATEWAY}/nilai/karakter`, getAuthHeaders());
+        return response.data.data;
+    } catch (error) {
+        console.error('Gagal memuat nilai karakter:', error);
+        return null;
+    }
+};
+
+
 export const fetchSkpmDashboard = async () => {
     try {
         const response = await apiClient.get(`${API_GATEWAY}/skpm/dashboard`, getAuthHeaders());

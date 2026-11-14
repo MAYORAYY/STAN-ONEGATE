@@ -1,7 +1,5 @@
 {
-  "buildCommand": "cd apps/frontend && npm install && npm run build",
+  "buildCommand": "npx turbo run build --filter=@onegate/frontend",
   "outputDirectory": "apps/frontend/dist",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

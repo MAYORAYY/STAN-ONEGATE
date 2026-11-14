@@ -2,28 +2,116 @@ import express from 'express';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import jwt from 'jsonwebtoken';
-import fs from 'fs';
-import cors from 'cors'; // 1. Impor cors
+import cors from 'cors';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.development' });
 
 const app = express();
 
-// 2. WAJIB LETAKKAN CORS DI SINI (sebelum express.json dan rute)
 app.use(cors({
-  origin: 'http://localhost:5173', // Mengizinkan akses dari antarmuka React
+  origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // preflight cukup sekali per hari
 }));
 
 app.use(express.json());
+
+// Log durasi setiap request
+app.use((req, res, next) => {
+  const t = Date.now();
+  res.on('finish', () => console.log(`${req.method} ${req.originalUrl} → ${res.statusCode} ${Date.now() - t}ms`));
+  next();
+});
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET wajib diset di .env. Aplikasi tidak akan berjalan tanpa ini.');
 }
 const IDENTITY_SERVICE_URL = 'http://localhost:3001/identity/sessions';
+const PORTAL = 'https://portal.pknstan.ac.id';
+
+// ---------- HELPER ----------
+
+// Cache berbasis promise: request kembar yang datang bersamaan berbagi satu pekerjaan
+const memoStore = new Map<string, { at: number; promise: Promise<any> }>();
+
+const memo = <T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>,
+  keep: (v: T) => boolean = () => true
+): Promise<T> => {
+  const hit = memoStore.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.promise;
+
+  const promise = loader();
+  memoStore.set(key, { at: Date.now(), promise });
+  promise
+    .then(v => { if (!keep(v)) memoStore.delete(key); })
+    .catch(() => memoStore.delete(key)); // jangan cache kegagalan
+  return promise;
+};
+
+// Buang semua cache milik satu sesi portal
+const invalidate = (ciSession: string) => {
+  for (const key of memoStore.keys()) {
+    if (key.startsWith(`${ciSession}|`)) memoStore.delete(key);
+  }
+};
+
+// Bersihkan entri lama tiap 5 menit supaya memori tidak membengkak
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of memoStore) if (now - v.at > 15 * 60_000) memoStore.delete(k);
+}, 5 * 60_000).unref();
+
+// Jalankan fn untuk tiap item dengan maksimal `limit` sekaligus; urutan hasil tetap
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i] as T);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+const portalHeaders = (ciSession: string, referer = `${PORTAL}/`) => ({
+  Cookie: ciSession,
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Encoding': 'gzip, deflate',
+  Referer: referer
+});
+
+// Sesi portal dari identity service (di-cache 60 detik per token)
+const getCiSession = (authHeader: string): Promise<string> =>
+  memo(`session|${authHeader}`, 60_000, async () => {
+    const r = await axios.get(IDENTITY_SERVICE_URL, {
+      headers: { Authorization: authHeader },
+      timeout: 5000
+    });
+    if (!r.data.portalSession) throw new Error('Sesi portal tidak ditemukan.');
+    return r.data.portalSession as string;
+  });
+
+// Ambil HTML halaman portal (di-cache per sesi + URL)
+const fetchHtml = (ciSession: string, url: string, ttlMs: number): Promise<string> =>
+  memo(`${ciSession}|html|${url}`, ttlMs, async () => {
+    const r = await axios.get(url, {
+      headers: portalHeaders(ciSession),
+      maxRedirects: 0,
+      validateStatus: s => s >= 200 && s < 400,
+      timeout: 20000
+    });
+    if (r.status >= 300) throw new Error('Sesi portal kedaluwarsa (dialihkan ke halaman login).');
+    return (r.data as string) || '';
+  });
 
 // Middleware Verifikasi JWT
 const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -31,7 +119,7 @@ const requireAuth = (req: express.Request, res: express.Response, next: express.
   if (!authHeader) {
     return res.status(401).json({ error: true, module: 'attendance', message: 'Token tidak ditemukan.' });
   }
-  
+
   const token = authHeader.split(' ')[1];
   if (!token) {
     return res.status(401).json({ error: true, module: 'attendance', message: 'Format token tidak valid.' });
@@ -46,30 +134,16 @@ const requireAuth = (req: express.Request, res: express.Response, next: express.
   }
 };
 
-// Rute Scraping Presensi
+// ---------- RUTE ----------
+
+// Rute Scraping Presensi (jadwal kuliah hari ini)
 app.post('/adapter/attendance', requireAuth, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization as string;
-    const sessionRes = await axios.get(IDENTITY_SERVICE_URL, {
-      headers: { Authorization: authHeader }
-    });
-    
-    const ciSession = sessionRes.data.portalSession;
-    if (!ciSession) throw new Error('Sesi portal tidak ditemukan.');
+    const ciSession = await getCiSession(req.headers.authorization as string);
 
-    const portalRes = await axios.get('https://portal.pknstan.ac.id/stud/jadkul/kulnow', {
-      headers: { 
-        'Cookie': ciSession,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate',
-        'Referer': 'https://portal.pknstan.ac.id/'
-      },
-      maxRedirects: 0, 
-      validateStatus: (status) => status >= 200 && status < 400 
-    });
-
-    const $ = cheerio.load(portalRes.data || '');
+    // TTL pendek (10 detik): cukup untuk membuang request kembar, tetap segar untuk tombol absen
+    const html = await fetchHtml(ciSession, `${PORTAL}/stud/jadkul/kulnow`, 10_000);
+    const $ = cheerio.load(html);
     const jadwalList: any[] = [];
 
     $('table.table tbody tr').each((index, element) => {
@@ -97,10 +171,10 @@ app.post('/adapter/attendance', requireAuth, async (req, res) => {
         payloadPresensi: presensiData
       });
     });
-    
-    res.json({ 
-      success: true, 
-      message: 'Jadwal berhasil diekstrak', 
+
+    res.json({
+      success: true,
+      message: 'Jadwal berhasil diekstrak',
       totalJadwal: jadwalList.length,
       data: jadwalList
     });
@@ -113,32 +187,29 @@ app.post('/adapter/attendance', requireAuth, async (req, res) => {
 app.post('/adapter/attendance/submit', requireAuth, async (req, res) => {
   try {
     const { id, link } = req.body;
-    
+
     if (!id || !link) {
       return res.status(400).json({ error: true, message: 'Parameter id dan link presensi wajib disertakan' });
     }
 
-    const authHeader = req.headers.authorization as string;
-    const sessionRes = await axios.get(IDENTITY_SERVICE_URL, {
-      headers: { Authorization: authHeader }
-    });
-    
-    const ciSession = sessionRes.data.portalSession;
-    if (!ciSession) throw new Error('Sesi portal tidak ditemukan.');
+    const ciSession = await getCiSession(req.headers.authorization as string);
 
     const formData = new URLSearchParams();
     formData.append('id', id);
     formData.append('link', link);
 
-    const submitRes = await axios.post('https://portal.pknstan.ac.id/stud/jadkul/absenkul', formData.toString(), {
-      headers: { 
-        'Cookie': ciSession,
+    const submitRes = await axios.post(`${PORTAL}/stud/jadkul/absenkul`, formData.toString(), {
+      headers: {
+        Cookie: ciSession,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
-        'Referer': 'https://portal.pknstan.ac.id/stud/jadkul/kulnow'
-      }
+        Referer: `${PORTAL}/stud/jadkul/kulnow`
+      },
+      timeout: 20000
     });
+
+    invalidate(ciSession); // data presensi berubah, buang cache
 
     res.json({
       success: true,
@@ -150,86 +221,88 @@ app.post('/adapter/attendance/submit', requireAuth, async (req, res) => {
   }
 });
 
+// Ambil semua rekap presensi (KRS → tiap mata kuliah), paralel terbatas
+const loadRiwayat = async (ciSession: string) => {
+  const t0 = Date.now();
+
+  // Tahap 1: daftar link rekap dari halaman KRS
+  const krsHtml = await fetchHtml(ciSession, `${PORTAL}/stud/jadkul/index`, 60_000);
+  const $krs = cheerio.load(krsHtml);
+  const linkSet = new Set<string>();
+
+  $krs('a').each((_, el) => {
+    const href = $krs(el).attr('href');
+    const linkText = `${$krs(el).attr('data-original-title') || ''} ${$krs(el).attr('title') || ''} ${$krs(el).text()} ${href || ''}`;
+    if (href && /rekap|presensi/i.test(linkText)) {
+      linkSet.add(new URL(href, PORTAL).toString());
+    }
+  });
+  const rekapLinks = [...linkSet];
+
+  console.log(`[attendance-riwayat] Link rekap ditemukan: ${rekapLinks.length}`);
+
+  // Tahap 2: ambil tiap halaman rekap, maksimal 4 sekaligus
+  let gagal = 0;
+  const pages = await mapLimit(rekapLinks, 4, async (link) => {
+    const t = Date.now();
+    try {
+      const html = await fetchHtml(ciSession, link, 10 * 60_000);
+      const $ = cheerio.load(html);
+      const rows: any[] = [];
+
+      $('table tbody tr').each((_, el) => {
+        const tds = $(el).find('td');
+        if (tds.length < 5) return;
+        rows.push({
+          no: $(tds[0]).text().trim(),
+          mataKuliah: $(tds[1]).text().trim(),
+          pengajar: $(tds[2]).text().trim(),
+          tanggal: $(tds[3]).text().trim(),
+          presensi: $(tds[4]).text().trim()
+        });
+      });
+
+      console.log(`[attendance-riwayat] ${link} → ${Date.now() - t}ms (${rows.length} baris)`);
+      return rows;
+    } catch (e: any) {
+      gagal++;
+      console.error(`[attendance-riwayat] Gagal ${link} (${Date.now() - t}ms):`, e.message);
+      return [] as any[];
+    }
+  });
+
+  console.log(`[attendance-riwayat] Selesai dalam ${Date.now() - t0}ms, gagal: ${gagal}`);
+
+  return {
+    totalMataKuliah: rekapLinks.length,
+    gagal,
+    data: ([] as any[]).concat(...pages)
+  };
+};
+
 // Rute Riwayat Presensi (gabungan dari semua mata kuliah)
+// Tambahkan ?refresh=1 untuk melewati cache
 app.get('/adapter/attendance/riwayat', requireAuth, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization as string;
-    const sessionRes = await axios.get(IDENTITY_SERVICE_URL, {
-      headers: { Authorization: authHeader }
-    });
+    const ciSession = await getCiSession(req.headers.authorization as string);
+    if (req.query.refresh === '1') invalidate(ciSession);
 
-    const ciSession = sessionRes.data.portalSession;
-    if (!ciSession) throw new Error('Sesi portal tidak ditemukan.');
+    // Cache 10 menit; tidak disimpan kalau ada mata kuliah yang gagal diambil
+    const hasil = await memo(`${ciSession}|riwayat`, 10 * 60_000, () => loadRiwayat(ciSession), v => v.gagal === 0);
 
-    const portalHeaders = {
-      'Cookie': ciSession,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Encoding': 'gzip, deflate',
-      'Referer': 'https://portal.pknstan.ac.id/'
-    };
-
-    // Tahap 1: Ambil daftar link rekap presensi dari halaman KRS
-    const krsRes = await axios.get('https://portal.pknstan.ac.id/stud/jadkul/index', {
-      headers: portalHeaders,
-      maxRedirects: 0,
-      validateStatus: (status) => status >= 200 && status < 400
-    });
-
-    const $krs = cheerio.load(krsRes.data || '');
-    const rekapLinks: string[] = [];
-
-    $krs('a').each((_, el) => {
-      const href = $krs(el).attr('href');
-      const linkText = `${$krs(el).attr('data-original-title') || ''} ${$krs(el).attr('title') || ''} ${$krs(el).text()} ${href || ''}`;
-      if (href && /rekap|presensi/i.test(linkText)) {
-        rekapLinks.push(new URL(href, 'https://portal.pknstan.ac.id').toString());
-      }
-    });
-
-    console.log(`[attendance-riwayat] Link rekap ditemukan: ${rekapLinks.length}`);
-
-    if (rekapLinks.length === 0) {
+    if (hasil.totalMataKuliah === 0) {
       return res.json({ success: true, message: 'Tidak ada mata kuliah dengan rekap presensi.', data: [] });
-    }
-
-    // Tahap 2: Scrape tiap halaman rekap presensi satu per satu
-    const riwayatPresensi: any[] = [];
-
-    for (const link of rekapLinks) {
-      try {
-        const rekapRes = await axios.get(link, {
-          headers: portalHeaders,
-          maxRedirects: 0,
-          validateStatus: (status) => status >= 200 && status < 400
-        });
-
-        const $rekap = cheerio.load(rekapRes.data || '');
-
-        $rekap('table tbody tr').each((_, el) => {
-          const tds = $rekap(el).find('td');
-          if (tds.length < 5) return;
-
-          riwayatPresensi.push({
-            no: $rekap(tds[0]).text().trim(),
-            mataKuliah: $rekap(tds[1]).text().trim(),
-            pengajar: $rekap(tds[2]).text().trim(),
-            tanggal: $rekap(tds[3]).text().trim(),
-            presensi: $rekap(tds[4]).text().trim()
-          });
-        });
-      } catch (innerError: any) {
-        console.error(`Gagal scrape rekap presensi dari ${link}:`, innerError.message);
-        // lanjut ke mata kuliah berikutnya meski satu gagal, supaya tidak menggagalkan semuanya
-      }
     }
 
     res.json({
       success: true,
-      message: 'Riwayat presensi berhasil diekstrak',
-      totalMataKuliah: rekapLinks.length,
-      totalRiwayat: riwayatPresensi.length,
-      data: riwayatPresensi
+      message: hasil.gagal > 0
+        ? `Riwayat presensi diekstrak sebagian (${hasil.gagal} mata kuliah gagal diambil)`
+        : 'Riwayat presensi berhasil diekstrak',
+      totalMataKuliah: hasil.totalMataKuliah,
+      totalRiwayat: hasil.data.length,
+      gagal: hasil.gagal,
+      data: hasil.data
     });
   } catch (error: any) {
     res.status(500).json({ error: true, module: 'attendance-riwayat', message: error.message || 'Gagal memproses riwayat presensi' });

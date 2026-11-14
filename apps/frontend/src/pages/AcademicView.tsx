@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
     GraduationCap, BookOpen, Printer, FileText, Send, 
-    CalendarOff, UserCircle, CheckCircle2, Clock, RefreshCw 
+    CalendarOff, UserCircle, CheckCircle2, Clock, RefreshCw, Award, Info
 } from 'lucide-react';
-import { fetchProfilMahasiswa, fetchTranskripNilai, fetchJadwalHistory } from '../services/academicService';
+import { fetchProfilMahasiswa, fetchTranskripNilai, fetchNilaiKarakter, fetchJadwalHistory } from '../services/academicService';
 
 export default function AcademicView() {
     const [activeTab, setActiveTab] = useState('profil');
@@ -11,6 +11,7 @@ export default function AcademicView() {
     // State Layanan Akademik Umum
     const [profil, setProfil] = useState<any>(null);
     const [nilaiList, setNilaiList] = useState<any[]>([]);
+    const [nilaiKarakter, setNilaiKarakter] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     // State Khusus Tab Jadwal
@@ -18,16 +19,29 @@ export default function AcademicView() {
     const [jadwalHistory, setJadwalHistory] = useState<any[]>([]);
     const [isSyncingJadwal, setIsSyncingJadwal] = useState(false);
 
-    // Tarik data profil dan nilai saat komponen pertama kali dimuat
+    // Popup "layanan belum tersedia"
+    const [notice, setNotice] = useState<string | null>(null);
+
+    // Tutup popup dengan tombol Esc
+    useEffect(() => {
+        if (!notice) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNotice(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [notice]);
+
+    // Tarik data profil, nilai, dan nilai karakter saat komponen pertama kali dimuat
     useEffect(() => {
         async function loadData() {
             setLoading(true);
-            const [profilData, nilaiData] = await Promise.all([
+            const [profilData, nilaiData, karakterData] = await Promise.all([
                 fetchProfilMahasiswa(),
-                fetchTranskripNilai()
+                fetchTranskripNilai(),
+                fetchNilaiKarakter()
             ]);
             setProfil(profilData);
             setNilaiList(nilaiData || []);
+            setNilaiKarakter(karakterData);
             setLoading(false);
         }
         loadData();
@@ -53,6 +67,8 @@ export default function AcademicView() {
     };
 
     const inputClass = "w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0a2540] transition-colors";
+    const thClass = "text-left px-4 py-3 font-semibold text-slate-500 bg-slate-50 border-b border-slate-200";
+    const tdClass = "px-4 py-4 border-b border-slate-100";
 
     return (
         <div>
@@ -104,36 +120,68 @@ export default function AcademicView() {
 
                     {/* TAB NILAI */}
                     {activeTab === 'nilai' && (
-                        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
-                            <div className="flex justify-between items-center mb-5 pb-4 border-b border-slate-100">
-                                <h3 className="text-base font-semibold text-[#0a2540] flex items-center gap-2"><BookOpen size={16} /> Rekapitulasi Nilai & Mata Kuliah Diikuti</h3>
-                                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border bg-transparent text-slate-700 border-slate-200 hover:bg-slate-50 cursor-pointer"><Printer size={13} /> Cetak Transkrip</button>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse text-sm">
-                                    <thead>
-                                        <tr>
-                                            <th className="text-left px-4 py-3 font-semibold text-slate-500 bg-slate-50 border-b border-slate-200">#</th>
-                                            <th className="text-left px-4 py-3 font-semibold text-slate-500 bg-slate-50 border-b border-slate-200">Nama Mata Kuliah</th>
-                                            <th className="text-left px-4 py-3 font-semibold text-slate-500 bg-slate-50 border-b border-slate-200">SKS</th>
-                                            <th className="text-left px-4 py-3 font-semibold text-slate-500 bg-slate-50 border-b border-slate-200">Nilai Akhir</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {nilaiList.length === 0 ? (
-                                            <tr><td colSpan={4} className="text-center py-6 text-slate-400">Belum ada data nilai.</td></tr>
-                                        ) : (
-                                            nilaiList.map((item, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-4 py-4 border-b border-slate-100">{item.no}</td>
-                                                    <td className="px-4 py-4 border-b border-slate-100">{item.namaMk}</td>
-                                                    <td className="px-4 py-4 border-b border-slate-100">{item.sks}</td>
-                                                    <td className="px-4 py-4 border-b border-slate-100"><strong>{item.nilaiAngka}</strong></td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
+                        <div>
+                            {/* KARTU NILAI KARAKTER */}
+                            {nilaiKarakter && (
+                                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
+                                    <h3 className="text-base font-semibold text-[#0a2540] flex items-center gap-2 mb-5 pb-4 border-b border-slate-100">
+                                        <Award size={16} /> Nilai Karakter
+                                    </h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                                        {[
+                                            { label: 'Sikap Perilaku', value: nilaiKarakter.sikapPerilaku },
+                                            { label: 'Kehadiran', value: nilaiKarakter.kehadiran },
+                                            { label: 'Tugas', value: nilaiKarakter.tugas },
+                                            { label: 'SKP', value: nilaiKarakter.skp },
+                                            { label: 'N. Angka', value: nilaiKarakter.nilaiAngka, bold: true },
+                                            { label: 'N. Huruf', value: nilaiKarakter.nilaiHuruf, bold: true },
+                                        ].map(item => (
+                                            <div key={item.label} className="bg-slate-50 rounded-lg px-4 py-3">
+                                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{item.label}</p>
+                                                <p className={`text-sm text-slate-800 ${item.bold ? 'font-bold' : 'font-medium'}`}>{item.value || '-'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* KARTU REKAPITULASI NILAI AKADEMIK */}
+                            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
+                                <div className="flex justify-between items-center mb-5 pb-4 border-b border-slate-100">
+                                    <h3 className="text-base font-semibold text-[#0a2540] flex items-center gap-2"><BookOpen size={16} /> Rekapitulasi Nilai & Mata Kuliah Diikuti</h3>
+                                    <button className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border bg-transparent text-slate-700 border-slate-200 hover:bg-slate-50 cursor-pointer"><Printer size={13} /> Cetak Transkrip</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse text-sm">
+                                        <thead>
+                                            <tr>
+                                                {['#', 'Nama Mata Kuliah', 'Kelompok', 'SKS', 'UTS', 'UAS', 'AKT', 'N. Angka', 'N. Huruf', 'N. Indeks'].map(h => (
+                                                    <th key={h} className={thClass}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {nilaiList.length === 0 ? (
+                                                <tr><td colSpan={10} className="text-center py-6 text-slate-400">Belum ada data nilai.</td></tr>
+                                            ) : (
+                                                nilaiList.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                        <td className={tdClass}>{item.no}</td>
+                                                        <td className={tdClass}>{item.namaMk}</td>
+                                                        <td className={tdClass}>{item.kelompok}</td>
+                                                        <td className={tdClass}>{item.sks}</td>
+                                                        <td className={tdClass}>{item.uts}</td>
+                                                        <td className={tdClass}>{item.uas}</td>
+                                                        <td className={tdClass}>{item.akt}</td>
+                                                        <td className={tdClass}><strong>{item.nilaiAngka}</strong></td>
+                                                        <td className={tdClass}><strong>{item.nilaiHuruf}</strong></td>
+                                                        <td className={tdClass}>{item.nilaiIndeks}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -144,7 +192,11 @@ export default function AcademicView() {
                             <h3 className="text-base font-semibold text-[#0a2540] flex items-center gap-2 mb-5 pb-4 border-b border-slate-100"><FileText size={16} /> Buat Pengajuan Surat Baru</h3>
                             <div className="mb-5"><label className="block text-sm font-medium text-slate-700 mb-2">Jenis Surat</label><select className={inputClass}><option>Surat Keterangan Mahasiswa Aktif</option></select></div>
                             <div className="mb-5"><label className="block text-sm font-medium text-slate-700 mb-2">Tujuan/Keperluan</label><textarea className={inputClass} rows={3} placeholder="Jelaskan keperluan..."></textarea></div>
-                            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#0a2540] text-white hover:bg-[#173d6b] cursor-pointer"><Send size={13} /> Ajukan Surat</button>
+                            <button
+                                onClick={() => setNotice('Layanan pengajuan surat belum tersedia saat ini.')}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#0a2540] text-white hover:bg-[#173d6b] cursor-pointer">
+                                <Send size={13} /> Ajukan Surat
+                            </button>
                         </div>
                     )}
 
@@ -193,7 +245,9 @@ export default function AcademicView() {
                                         <label className="block text-sm font-medium text-slate-700 mb-2">Alasan Pemindahan</label>
                                         <textarea className={inputClass} rows={3} placeholder="Misal: Dosen berhalangan hadir / bentrok kegiatan wajib kampus..."></textarea>
                                     </div>
-                                    <button className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-[#0a2540] text-white hover:bg-[#173d6b] cursor-pointer shadow-sm">
+                                    <button
+                                        onClick={() => setNotice('Layanan pemindahan jadwal belum tersedia saat ini.')}
+                                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-[#0a2540] text-white hover:bg-[#173d6b] cursor-pointer shadow-sm">
                                         <Send size={14} /> Ajukan Pemindahan Jadwal
                                     </button>
                                 </div>
@@ -248,6 +302,30 @@ export default function AcademicView() {
                         </div>
                     )}
                 </>
+            )}
+
+            {/* POPUP LAYANAN BELUM TERSEDIA */}
+            {notice && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={() => setNotice(null)}>
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center"
+                        onClick={e => e.stopPropagation()}>
+                        <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
+                            <Info size={24} />
+                        </div>
+                        <h3 className="text-base font-semibold text-[#0a2540] mb-2">Layanan Belum Tersedia</h3>
+                        <p className="text-sm text-slate-600 mb-5">{notice}</p>
+                        <button
+                            onClick={() => setNotice(null)}
+                            className="px-5 py-2 rounded-lg text-sm font-medium bg-[#0a2540] text-white hover:bg-[#173d6b] cursor-pointer">
+                            Mengerti
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

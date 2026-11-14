@@ -35,6 +35,7 @@ export default function ProfileView() {
                 email: "aldy_4131230066@pknstan.ac.id",
                 prodi: "D4 Akuntansi Sektor Publik",
                 semester: "Semester 6",
+                kelas: "6 Sisfo 3",
                 status: "Mahasiswa Aktif",
                 telepon: "", // Dikosongkan
                 alamat: ""   // Dikosongkan
@@ -174,6 +175,10 @@ export default function ProfileView() {
                         </div>
                         <div className="p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
+                                 <div>
+                                    <p className="text-xs font-medium text-slate-500 mb-1">Kelas</p>
+                                    <p className="text-sm font-semibold text-slate-800">{userData.kelas}</p>
+                                </div>
                                 <div>
                                     <p className="text-xs font-medium text-slate-500 mb-1">Program Studi</p>
                                     <p className="text-sm font-semibold text-slate-800">{userData.prodi}</p>
@@ -182,6 +187,7 @@ export default function ProfileView() {
                                     <p className="text-xs font-medium text-slate-500 mb-1">Semester Berjalan</p>
                                     <p className="text-sm font-semibold text-slate-800">{userData.semester}</p>
                                 </div>
+                            
                             </div>
                         </div>
                     </div>
