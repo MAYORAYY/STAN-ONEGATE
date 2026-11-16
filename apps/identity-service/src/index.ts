@@ -258,5 +258,5 @@ app.get('/identity/sessions', requireAuth, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Identity Service berjalan di http://localhost:${PORT}`);
+  console.log(`Identity Service berjalan pada port ${PORT}`);
 });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, BookOpen, Shield, Key, MapPin, BadgeCheck, Phone, BellRing } from 'lucide-react';
+import { API_BASE_URL } from '../services/apiClient';
 
 // --- FUNGSI UTILITAS UNTUK VAPID PUSH NOTIFICATION ---
 const urlBase64ToUint8Array = (base64String: string) => {
@@ -93,7 +94,7 @@ export default function ProfileView() {
 
             // Kirim objek subscription ke backend Identity Service
             const token = localStorage.getItem('onegate_token') || localStorage.getItem('accessToken');
-            const response = await fetch('http://localhost:3001/identity/notifications/subscribe', {
+            const response = await fetch(`${API_BASE_URL}/identity/notifications/subscribe`, {
                 method: 'POST',
                 body: JSON.stringify(subscription),
                 headers: {

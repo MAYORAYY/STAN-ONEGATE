@@ -46,31 +46,21 @@ npm install
 
 ## Environment
 
-Setiap service membaca environment-nya sendiri. Jangan commit file `.env` atau `.env.development` yang berisi secret.
+Setiap service memiliki `.env.example`. Untuk development, salin file yang diperlukan menjadi `.env.development` di folder service terkait. Jangan commit file environment yang berisi secret.
 
-### Identity Service
+Frontend menggunakan `VITE_API_URL` sebagai alamat dasar API Gateway (misalnya `http://localhost:3000`). Untuk production, atur variabel ini pada environment build frontend.
 
-Buat file `apps/identity-service/.env.development`:
+Gateway memerlukan:
 
-```env
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DATABASE_NAME"
-JWT_SECRET=ganti-dengan-secret-jwt
-ENCRYPTION_KEY=64-karakter-hex-untuk-aes-256
-PORT=3001
-```
+- `IDENTITY_URL`, `ACADEMIC_URL`, `ATTENDANCE_URL`, `LMS_URL`: alamat dasar backend masing-masing, tanpa path endpoint.
+- `FRONTEND_ORIGIN`: origin frontend yang diizinkan CORS.
+- `PORT`: port gateway (opsional; default `3000`).
 
-`ENCRYPTION_KEY` harus tepat 64 karakter hexadecimal atau 32 byte. Identity Service memuat file ini melalui `dotenv`.
+Adapter akademik, presensi, dan LMS memerlukan `IDENTITY_URL` dan `FRONTEND_ORIGIN`. Adapter presensi dan LMS juga memerlukan `JWT_SECRET` yang sama dengan Identity Service.
 
-### Attendance Adapter
+Identity Service memerlukan `DATABASE_URL`, `JWT_SECRET`, dan `ENCRYPTION_KEY`. `ENCRYPTION_KEY` harus tepat 64 karakter hexadecimal (32 byte). `SESSION_TTL_MINUTES` opsional dan default-nya 120 menit.
 
-Buat file `apps/adapters/attendance/.env.development`:
-
-```env
-JWT_SECRET=ganti-dengan-secret-jwt-yang-sama
-PORT=3002
-```
-
-`JWT_SECRET` harus sama dengan Identity Service agar adapter dapat memverifikasi access token.
+Untuk production, isi environment variables melalui platform hosting, bukan file yang di-commit. Buat nilai `JWT_SECRET` dan `ENCRYPTION_KEY` khusus production; jangan gunakan nilai development.
 
 ### Secret lokal
 
@@ -83,14 +73,15 @@ $secret
 
 ## Database
 
-Setelah `DATABASE_URL` tersedia, jalankan migration dan generate Prisma Client dari folder Identity Service:
+Untuk development, setelah `DATABASE_URL` tersedia, jalankan migration dari folder Identity Service:
 
 ```powershell
 cd apps/identity-service
 npx prisma migrate dev
-npx prisma generate
 cd ../..
 ```
+
+Build Identity Service otomatis menjalankan `prisma generate`. Untuk database production, jalankan `npx prisma migrate deploy` dari folder Identity Service; jangan gunakan `migrate dev` pada production.
 
 ## Menjalankan Development
 
@@ -202,6 +193,8 @@ Endpoint ini terproteksi dan digunakan adapter untuk mengambil sesi portal yang 
 ```powershell
 npm run build
 ```
+
+Build root mengompilasi frontend dan semua backend. Setiap backend memiliki script `build` dan `start`; setelah build, jalankan service dari workspace masing-masing dengan `npm run start`. Deploy frontend sebagai static site dari `apps/frontend/dist`, dan set `VITE_API_URL` ke URL publik API Gateway ketika build.
 
 ## Troubleshooting
 

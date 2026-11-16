@@ -9,9 +9,13 @@ dotenv.config({ path: '.env.development' });
 
 const app = express();
 const PORT = process.env.PORT || 3004;
+const IDENTITY_URL = process.env.IDENTITY_URL;
+if (!IDENTITY_URL) {
+    throw new Error('IDENTITY_URL wajib diset.');
+}
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: process.env.FRONTEND_ORIGIN,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -22,7 +26,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     throw new Error('JWT_SECRET wajib diset di .env.development.');
 }
-const IDENTITY_SERVICE_URL = 'http://localhost:3001/identity/sessions';
+const IDENTITY_SERVICE_URL = `${IDENTITY_URL.replace(/\/+$/, '')}/identity/sessions`;
 const LMS_BASE_URL = 'https://lms.pknstan.ac.id'; 
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -213,5 +217,5 @@ app.get('/adapter/lms/assign/:id', requireAuth, async (req: Request, res: Respon
 });
 
 app.listen(PORT, () => {
-    console.log(`📚 LMS Adapter berjalan di http://localhost:${PORT}`);
+    console.log(`LMS Adapter berjalan pada port ${PORT}`);
 });

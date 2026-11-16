@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE_URL } from './apiClient';
 
-const LMS_API = 'http://localhost:3004/adapter/lms';
+const LMS_API = `${API_BASE_URL}/adapter/lms`;
 
 const getAuthHeaders = () => {
     const token = localStorage.getItem('onegate_token') || '';

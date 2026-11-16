@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Lock, User, AlertCircle, Eye, EyeOff, Loader2, ArrowRight, Shield } from 'lucide-react';
+import { API_BASE_URL } from '../services/apiClient';
 
 export default function LoginView() {
     const [nim, setNim] = useState('');
@@ -15,8 +16,7 @@ export default function LoginView() {
         setErrorMsg('');
 
         try {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const response = await axios.post(`${API_URL}/identity/login`, { 
+            const response = await axios.post(`${API_BASE_URL}/identity/login`, {
     nim: nim, 
     password: password 
 }, {

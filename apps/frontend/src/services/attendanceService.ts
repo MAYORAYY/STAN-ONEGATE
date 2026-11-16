@@ -1,6 +1,6 @@
-import { apiClient, getAuthHeaders } from './apiClient';
+import { API_BASE_URL, apiClient, getAuthHeaders } from './apiClient';
 
-const ATTENDANCE_API = 'http://localhost:3002/adapter/attendance';
+const ATTENDANCE_API = `${API_BASE_URL}/adapter/attendance`;
 
 export const fetchJadwalPresensi = async () => {
     try {

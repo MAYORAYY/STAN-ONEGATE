@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, Clock, ArrowLeft, RefreshCw } from 'lucide-react';
+import { API_BASE_URL } from '../services/apiClient';
 
 async function fetchAssignmentDetail(assignId: string) {
     const token = localStorage.getItem('onegate_token') || localStorage.getItem('accessToken'); 
     
-    // Pastikan port sesuai dengan LMS Adapter (3004) atau API Gateway (3000)
-    const response = await fetch(`http://localhost:3004/adapter/lms/assign/${encodeURIComponent(assignId)}`, {
+    const response = await fetch(`${API_BASE_URL}/adapter/lms/assign/${encodeURIComponent(assignId)}`, {
         headers: {
             'Authorization': `Bearer ${token}`
         }

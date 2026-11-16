@@ -1,6 +1,6 @@
-import { apiClient, getAuthHeaders } from './apiClient';
+import { API_BASE_URL, apiClient, getAuthHeaders } from './apiClient';
 
-const API_GATEWAY = 'http://localhost:3000/adapter/academic';
+const API_GATEWAY = `${API_BASE_URL}/adapter/academic`;
 
 export const fetchProfilMahasiswa = async () => {
     try {

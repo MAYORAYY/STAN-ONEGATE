@@ -4,13 +4,19 @@ import FormData from 'form-data';
 import multer from 'multer';
 import * as cheerio from 'cheerio';
 import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.development' });
 
 const app = express();
 const PORT = process.env.PORT || 3003;
+const IDENTITY_URL = process.env.IDENTITY_URL;
+if (!IDENTITY_URL) {
+    throw new Error('IDENTITY_URL wajib diset.');
+}
 
-// Middleware CORS wajib diletakkan sebelum rute
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: process.env.FRONTEND_ORIGIN,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -50,7 +56,7 @@ const getCiSession = async (req: Request): Promise<string | null> => {
     if (hit && Date.now() - hit.at < 60_000) return hit.value;
 
     try {
-        const response = await axios.get('http://localhost:3001/identity/sessions', {
+        const response = await axios.get(`${IDENTITY_URL.replace(/\/+$/, '')}/identity/sessions`, {
             headers: { Authorization: authHeader },
             timeout: 5000
         });
@@ -431,5 +437,5 @@ app.get('/jadwal/history', async (req: Request, res: Response) => {
 
 // app.listen selalu di paling bawah, cukup satu kali
 app.listen(PORT, () => {
-    console.log(`🎓 Academic Adapter berjalan di http://localhost:${PORT}`);
+    console.log(`Academic Adapter berjalan pada port ${PORT}`);
 });

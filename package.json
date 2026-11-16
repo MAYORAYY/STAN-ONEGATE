@@ -21,13 +21,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "@types/node-cron": "^3.0.11",
     "turbo": "^2.10.12",
     "typescript": "^6.0.3"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "node-cron": "^4.6.0",
-    "react-router-dom": "^7.18.3"
   }
 }

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const IDENTITY_URL = 'http://localhost:3001/identity';
+export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+const IDENTITY_URL = `${API_BASE_URL}/identity`;
 
 export const apiClient = axios.create();
 
